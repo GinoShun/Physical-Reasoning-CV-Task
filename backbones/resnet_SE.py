@@ -2,6 +2,23 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+# Define Depthwise Separable Convolution
+class DepthwiseSeparableConv(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super(DepthwiseSeparableConv, self).__init__()
+        
+        # Depthwise convolution
+        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=stride, padding=1, groups=in_channels)
+        
+        # Pointwise convolution (1x1 conv)
+        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
+    
 # Define Squeeze-and-Excitation (SE) Layer
 class SElayer(nn.Module):
     def __init__(self, channel, reduction=16):  # Use a standard reduction of 16
@@ -24,9 +41,11 @@ class SElayer(nn.Module):
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, reduction=16):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+        
+        # Use Depthwise Separable Convolution in the residual block
+        self.conv1 = DepthwiseSeparableConv(in_channels, out_channels, stride)
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = DepthwiseSeparableConv(out_channels, out_channels)
         self.bn2 = nn.BatchNorm2d(out_channels)
 
         self.se = SElayer(out_channels, reduction)  # SE Layer after second convolution
@@ -60,12 +79,15 @@ class CNN(nn.Module):
         self.layer1 = self._make_layer(64, 128, stride=2)  # Reduce spatial dimensions
         self.layer2 = self._make_layer(128, 256, stride=2)  # Further reduce spatial dimensions
         self.layer3 = self._make_layer(256, 512, stride=2)  # Deeper features
+        self.layer4 = self._make_layer(512, 1024, stride=2)
+        self.layer5 = self._make_layer(1024, 2048, stride=2)
+        self.layer6 = self._make_layer(2048, 4096, stride=2)
 
         # Global Average Pooling
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
 
         # Fully connected layers
-        self.fc1 = nn.Linear(512, 1024)
+        self.fc1 = nn.Linear(4096, 1024)
         self.fc2 = nn.Linear(1024, n_classes)
 
         # Dropout for regularization
@@ -83,6 +105,11 @@ class CNN(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        x = self.layer6(x)
+
+        # print(x.shape)
 
         # Global average pooling to reduce feature map to 1x1
         x = self.avg_pool(x)
