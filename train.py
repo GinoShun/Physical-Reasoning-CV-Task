@@ -40,7 +40,7 @@ def load_data(args):
 
     return loaders
 
-def loss(outputs, targets):
+def loss(outputs, targets, model):
     out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle = outputs
     target_main = targets['stable_height']
     target_shapeset = targets['shapeset']
@@ -62,8 +62,28 @@ def loss(outputs, targets):
     loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
 
+    # learnable log sig
+    sigma_main = torch.exp(model.log_sigma_main)
+    sigma_shapeset = torch.exp(model.log_sigma_shapeset)
+    sigma_type = torch.exp(model.log_sigma_type)
+    sigma_total_height = torch.exp(model.log_sigma_total_height)
+    sigma_instability = torch.exp(model.log_sigma_instability)
+    sigma_cam_angle = torch.exp(model.log_sigma_cam_angle)
+
     # total loss
-    total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 0.2 * (loss_shapeset + loss_instability) + 0.1 * (loss_type + loss_cam_angle))
+
+    # human annotated weights! zhubao power!
+    # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 0.2 * (loss_shapeset + loss_instability) + 0.1 * (loss_type + loss_cam_angle))
+    
+    # learnable weights
+        # learnable log sig
+    total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + model.log_sigma_main + \
+                 (1 / (2 * sigma_total_height ** 2)) * loss_total_height + model.log_sigma_total_height + \
+                 (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + model.log_sigma_shapeset + \
+                 (1 / (2 * sigma_type ** 2)) * loss_type + model.log_sigma_type + \
+                 (1 / (2 * sigma_instability ** 2)) * loss_instability + model.log_sigma_instability + \
+                 (1 / (2 * sigma_cam_angle ** 2)) * loss_cam_angle + model.log_sigma_cam_angle
+    
     return total_loss
 
 
@@ -138,7 +158,7 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
 
         # Forward pass
         outputs = model(inputs)  # outputs shape is (batch_size, 1)
-        loss = criterion(outputs, targets)
+        loss = criterion(outputs, targets, model)
 
         # Backward pass
         loss.backward()
@@ -190,7 +210,7 @@ def validate(epoch, model, loaders, criterion, device):
 
             # Forward pass
             outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            loss = criterion(outputs, targets, model)
             val_loss += loss.item()
 
             # Calculate accuracy

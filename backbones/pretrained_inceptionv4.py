@@ -42,6 +42,14 @@ class CNN(nn.Module):
         self.fc_total_height = nn.Linear(in_features, n_classes)
         self.fc_instability = nn.Linear(in_features, 3)
         self.fc_cam_angle = nn.Linear(in_features, 2)
+
+        # learnable log sig
+        self.log_sigma_main = nn.Parameter(torch.tensor(0.0))
+        self.log_sigma_shapeset = nn.Parameter(torch.tensor(0.0))
+        self.log_sigma_type = nn.Parameter(torch.tensor(0.0))
+        self.log_sigma_total_height = nn.Parameter(torch.tensor(0.0))
+        self.log_sigma_instability = nn.Parameter(torch.tensor(0.0))
+        self.log_sigma_cam_angle = nn.Parameter(torch.tensor(0.0))
         
     def forward(self, x):
         x = self.base_model.features(x)
