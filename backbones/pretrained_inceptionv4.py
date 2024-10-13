@@ -39,6 +39,7 @@ class CNN(nn.Module):
         # supplementary tasks
         self.fc_shapeset = nn.Linear(in_features, 2)
         self.fc_type = nn.Linear(in_features, 2)
+        self.fc_total_height = nn.Linear(in_features, n_classes)
         self.fc_instability = nn.Linear(in_features, 3)
         self.fc_cam_angle = nn.Linear(in_features, 2)
         
@@ -53,8 +54,9 @@ class CNN(nn.Module):
         
         out_shapeset = self.fc_shapeset(x)
         out_type = self.fc_type(x)
+        out_total_height = self.fc_total_height(x)
         out_instability = self.fc_instability(x)
         out_cam_angle = self.fc_cam_angle(x)
         
-        return out_main, out_shapeset, out_type, out_instability, out_cam_angle
+        return out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle
 

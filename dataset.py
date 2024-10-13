@@ -27,6 +27,7 @@ class StackDataset(Dataset):
 
             self.shapeset = self.data_frame['shapeset'].values - 1
             self.type = self.data_frame['type'].values - 1
+            self.total_height = self.data_frame['total_height'].values - 1
             self.instability_type = self.data_frame['instability_type'].values
             self.cam_angle = self.data_frame['cam_angle'].values - 1
         else:
@@ -93,19 +94,21 @@ class StackDataset(Dataset):
             label_main = self.labels[idx]
             label_shapeset = self.shapeset[idx]
             label_type = self.type[idx]
+            total_height = self.total_height[idx]
             label_instability = self.instability_type[idx]
             label_cam_angle = self.cam_angle[idx]
             return image, {
                 'stable_height': label_main,
                 'shapeset': label_shapeset,
                 'type': label_type,
+                'total_height': total_height,
                 'instability_type': label_instability,
                 'cam_angle': label_cam_angle
             }
 
 if __name__ == '__main__':
     dataset = StackDataset(csv_file='data/train.csv', image_dir='data/train', img_size = 224, stable_height='stable_height', train=True)
-    train_loader = DataLoader(dataset, batch_size=512, shuffle=True)
+    train_loader = DataLoader(dataset, batch_size=128, shuffle=True)
     for images, labels in train_loader:
         print(images.shape, labels.shape)
         break

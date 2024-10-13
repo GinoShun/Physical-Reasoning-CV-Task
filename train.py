@@ -41,10 +41,11 @@ def load_data(args):
     return loaders
 
 def loss(outputs, targets):
-    out_main, out_shapeset, out_type, out_instability, out_cam_angle = outputs
+    out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle = outputs
     target_main = targets['stable_height']
     target_shapeset = targets['shapeset']
     target_type = targets['type']
+    target_total_height = targets['total_height']
     target_instability = targets['instability_type']
     target_cam_angle = targets['cam_angle']
 
@@ -57,11 +58,12 @@ def loss(outputs, targets):
     # supplementary tasks
     loss_shapeset = nn.CrossEntropyLoss()(out_shapeset, target_shapeset.long())
     loss_type = nn.CrossEntropyLoss()(out_type, target_type.long())
+    loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
     loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
 
     # total loss
-    total_loss = loss_main + 0.1 * (loss_shapeset + loss_type + loss_instability + loss_cam_angle)
+    total_loss = loss_main + 0.1 * (loss_shapeset + loss_type + loss_total_height + loss_instability + loss_cam_angle)
     return total_loss
 
 
@@ -90,7 +92,7 @@ def train_loop(args):
 
 
     # Learning rate scheduler
-    scheduler = CosineAnnealingLR(optimizer, T_max=20)
+    scheduler = CosineAnnealingLR(optimizer, T_max=24)
 
     # Epoch loop
     for epoch in range(args.n_epochs):
