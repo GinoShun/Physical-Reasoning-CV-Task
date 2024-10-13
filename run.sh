@@ -2,11 +2,11 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp12(add_total_height_T24_base_exp11)"
+TASK_NAME="models/exp13(loss_factor_tuning_base_exp12)"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4
-BATCH_SIZE_TRAIN=128
+BATCH_SIZE_TRAIN=64
 BATCH_SIZE_TEST=64
 N_EPOCHS=40
 LEARNING_RATE=0.0005

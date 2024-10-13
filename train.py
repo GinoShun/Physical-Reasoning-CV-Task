@@ -63,7 +63,7 @@ def loss(outputs, targets):
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
 
     # total loss
-    total_loss = loss_main + 0.1 * (loss_shapeset + loss_type + loss_total_height + loss_instability + loss_cam_angle)
+    total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 0.2 * (loss_shapeset + loss_instability) + 0.1 * (loss_type + loss_cam_angle))
     return total_loss
 
 
