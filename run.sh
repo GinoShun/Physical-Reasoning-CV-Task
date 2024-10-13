@@ -2,16 +2,16 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp6"
+TASK_NAME="models/exp9(AdamW_base_exp8)"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4
-BATCH_SIZE_TRAIN=64
+BATCH_SIZE_TRAIN=128
 BATCH_SIZE_TEST=64
 N_EPOCHS=50
 LEARNING_RATE=0.001
 MOMENTUM=0.9
-NETWORK="resnet_SE"
+NETWORK="pretrained_inceptionv4"
 
 
 python train.py \

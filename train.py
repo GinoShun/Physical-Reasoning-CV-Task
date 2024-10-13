@@ -27,8 +27,8 @@ def import_network(network_file):
 
 # Function to load data and create loaders
 def load_data(args):
-    train_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=(224), stable_height = 'stable_height', train=True)
-    val_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=(224), stable_height = 'stable_height', train=False)
+    train_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=True)
+    val_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=False)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size_train, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size_test, shuffle=False)
@@ -39,6 +39,28 @@ def load_data(args):
     }
 
     return loaders
+
+def loss(outputs, targets):
+    out_main, out_shapeset, out_type, out_instability, out_cam_angle = outputs
+    target_main = targets['stable_height']
+    target_shapeset = targets['shapeset']
+    target_type = targets['type']
+    target_instability = targets['instability_type']
+    target_cam_angle = targets['cam_angle']
+
+    # regression main task
+    loss_main = nn.MSELoss()(out_main.squeeze(), target_main.float())
+
+    # supplementary tasks
+    loss_shapeset = nn.CrossEntropyLoss()(out_shapeset, target_shapeset.long())
+    loss_type = nn.CrossEntropyLoss()(out_type, target_type.long())
+    loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
+    loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
+
+    # total loss
+    total_loss = loss_main + 0.1 * (loss_shapeset + loss_type + loss_instability + loss_cam_angle)
+    return total_loss
+
 
 # Main training loop
 def train_loop(args):
@@ -58,11 +80,15 @@ def train_loop(args):
     model.to(device)
 
     # Loss and optimizer
-    criterion = nn.CrossEntropyLoss() 
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    # criterion = nn.CrossEntropyLoss() 
+    criterion = loss
+    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+
 
     # Learning rate scheduler
-    scheduler = CosineAnnealingLR(optimizer, T_max=10)
+    scheduler = CosineAnnealingLR(optimizer, T_max=20)
 
     # Epoch loop
     for epoch in range(args.n_epochs):
@@ -70,10 +96,13 @@ def train_loop(args):
         validate(epoch, model, loaders, criterion, device)
         scheduler.step()
 
-    # Save the model after each epoch to the task_name directory
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f'Current Learning Rate after Epoch {epoch+1}: {current_lr}')
+
+        # Save the model after each epoch to the task_name directory
         model_save_path = os.path.join(args.task_name, f"model_epoch_{epoch+1}.pth")
         torch.save(model.state_dict(), model_save_path)
-        print(f"Model saved at {model_save_path}")
+        # print(f"Model saved at {model_save_path}")
 
 # Training function
 def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
@@ -89,16 +118,17 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
     pbar = tqdm(loaders['train'], total=len(loaders['train']))
     pbar.set_description(f"Training! Epoch {epoch} ")
 
-    for idx, (inputs, targets) in enumerate(loaders['train']):
+    for idx, (inputs, targets) in enumerate(pbar):
         # print(f"Batch {idx} loaded.")
 
         # Move inputs and targets to the device
-        inputs, targets = inputs.to(device), targets.to(device)
-        targets = targets.long()
+        inputs = inputs.to(device)
+        targets = {k: v.to(device) for k, v in targets.items()}
+        # targets = targets.long()
 
-        # Adjust targets: if labels are 1-based, convert them to 0-based
-        if targets.min() >= 1:
-            targets = targets - 1
+        # # Adjust targets: if labels are 1-based, convert them to 0-based
+        # if targets.min() >= 1:
+        #     targets = targets - 1
 
         # # Debugging: Print minimum and maximum values of targets
         # print(f"Min target: {targets.min()}, Max target: {targets.max()}")
@@ -120,9 +150,19 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
         running_loss += loss.item()
 
         # Calculate accuracy
-        _, predicted = torch.max(outputs, 1)  # Get the index of the max logit
-        correct += (predicted == targets).sum().item()
-        total += targets.size(0)
+        out_main = outputs[0]  # label
+        predicted_height = torch.round(out_main.squeeze())
+        predicted_height = torch.clamp(predicted_height, min=1, max=6)
+        predicted_height = predicted_height.long()
+
+        target_height = targets['stable_height'].long()
+        correct += (predicted_height == target_height).sum().item()
+        total += target_height.size(0)
+
+        # for classification
+        # _, predicted = torch.max(outputs, 1)  # Get the index of the max logit
+        # correct += (predicted == targets).sum().item()
+        # total += targets.size(0)
 
         # Progress logging
         # if idx % 10 == 0 and idx != 0:
@@ -141,12 +181,13 @@ def validate(epoch, model, loaders, criterion, device):
 
     with torch.no_grad():
         for inputs, targets in loaders['val']:
-            inputs, targets = inputs.to(device), targets.to(device)
-            targets = targets.long()
+            inputs = inputs.to(device)
+            targets = {k: v.to(device) for k, v in targets.items()}
+            # targets = targets.long()
 
-            # Adjust targets: if labels are 1-based, convert them to 0-based
-            if targets.min() >= 1:
-                targets = targets - 1
+            # # Adjust targets: if labels are 1-based, convert them to 0-based
+            # if targets.min() >= 1:
+            #     targets = targets - 1
 
             # Forward pass
             outputs = model(inputs)
@@ -154,9 +195,19 @@ def validate(epoch, model, loaders, criterion, device):
             val_loss += loss.item()
 
             # Calculate accuracy
-            _, predicted = torch.max(outputs, 1)
-            correct += (predicted == targets).sum().item()
-            total += targets.size(0)
+            out_main = outputs[0]
+            predicted_height = torch.round(out_main.squeeze())
+            predicted_height = torch.clamp(predicted_height, min=1, max=6)
+            predicted_height = predicted_height.long()
+
+            target_height = targets['stable_height'].long()
+            correct += (predicted_height == target_height).sum().item()
+            total += target_height.size(0)
+
+            # for classification
+            # _, predicted = torch.max(outputs, 1)
+            # correct += (predicted == targets).sum().item()
+            # total += targets.size(0)
 
     avg_val_loss = val_loss / len(loaders['val'])
     accuracy = 100 * correct / total
