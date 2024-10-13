@@ -22,7 +22,8 @@ class StackDataset(Dataset):
 
             self.data_frame = self.train_data if train else self.val_data
             self.image_ids = self.data_frame['id'].values
-            self.labels = self.data_frame[self.stable_height].values
+            # -1 if for classification
+            self.labels = self.data_frame[self.stable_height].values - 1
 
             self.shapeset = self.data_frame['shapeset'].values - 1
             self.type = self.data_frame['type'].values - 1
@@ -45,7 +46,7 @@ class StackDataset(Dataset):
                 # HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=0.5),
                 ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
                 RandomBrightnessContrast(p=0.5),
-                GaussNoise(var_limit=(10.0, 50.0), p=0.5),
+                GaussNoise(var_limit=(10.0, 50.0), p=0.3),
                 # CoarseDropout(max_holes=8, max_height=16, max_width=16, p=0.5),
                 Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 # Normalize(mean=0.0, std=1.0, max_pixel_value=255.0), 

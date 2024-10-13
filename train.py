@@ -30,8 +30,8 @@ def load_data(args):
     train_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=True)
     val_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size_train, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size_test, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size_train, shuffle=True, num_workers=args.num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size_test, shuffle=False, num_workers=args.num_workers)
 
     loaders = {
         'train': train_loader,
@@ -49,7 +49,10 @@ def loss(outputs, targets):
     target_cam_angle = targets['cam_angle']
 
     # regression main task
-    loss_main = nn.MSELoss()(out_main.squeeze(), target_main.float())
+    # loss_main = nn.MSELoss()(out_main.squeeze(), target_main.float())
+
+    # classification main task
+    loss_main = nn.CrossEntropyLoss()(out_main, target_main.long())
 
     # supplementary tasks
     loss_shapeset = nn.CrossEntropyLoss()(out_shapeset, target_shapeset.long())
@@ -80,7 +83,6 @@ def train_loop(args):
     model.to(device)
 
     # Loss and optimizer
-    # criterion = nn.CrossEntropyLoss() 
     criterion = loss
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -126,10 +128,6 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
         targets = {k: v.to(device) for k, v in targets.items()}
         # targets = targets.long()
 
-        # # Adjust targets: if labels are 1-based, convert them to 0-based
-        # if targets.min() >= 1:
-        #     targets = targets - 1
-
         # # Debugging: Print minimum and maximum values of targets
         # print(f"Min target: {targets.min()}, Max target: {targets.max()}")
         
@@ -151,18 +149,21 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
 
         # Calculate accuracy
         out_main = outputs[0]  # label
-        predicted_height = torch.round(out_main.squeeze())
-        predicted_height = torch.clamp(predicted_height, min=1, max=6)
-        predicted_height = predicted_height.long()
 
+        # For classification
+        _, predicted = torch.max(out_main, 1)
         target_height = targets['stable_height'].long()
-        correct += (predicted_height == target_height).sum().item()
+        correct += (predicted == target_height).sum().item()
         total += target_height.size(0)
 
-        # for classification
-        # _, predicted = torch.max(outputs, 1)  # Get the index of the max logit
-        # correct += (predicted == targets).sum().item()
-        # total += targets.size(0)
+        # # For regression
+        # predicted_height = torch.round(out_main.squeeze())
+        # predicted_height = torch.clamp(predicted_height, min=1, max=6)
+        # predicted_height = predicted_height.long()
+
+        # target_height = targets['stable_height'].long()
+        # correct += (predicted_height == target_height).sum().item()
+        # total += target_height.size(0)
 
         # Progress logging
         # if idx % 10 == 0 and idx != 0:
@@ -185,10 +186,6 @@ def validate(epoch, model, loaders, criterion, device):
             targets = {k: v.to(device) for k, v in targets.items()}
             # targets = targets.long()
 
-            # # Adjust targets: if labels are 1-based, convert them to 0-based
-            # if targets.min() >= 1:
-            #     targets = targets - 1
-
             # Forward pass
             outputs = model(inputs)
             loss = criterion(outputs, targets)
@@ -196,18 +193,22 @@ def validate(epoch, model, loaders, criterion, device):
 
             # Calculate accuracy
             out_main = outputs[0]
-            predicted_height = torch.round(out_main.squeeze())
-            predicted_height = torch.clamp(predicted_height, min=1, max=6)
-            predicted_height = predicted_height.long()
 
+            # For classification
+            _, predicted = torch.max(out_main, 1)
             target_height = targets['stable_height'].long()
-            correct += (predicted_height == target_height).sum().item()
+
+            correct += (predicted == target_height).sum().item()
             total += target_height.size(0)
 
-            # for classification
-            # _, predicted = torch.max(outputs, 1)
-            # correct += (predicted == targets).sum().item()
-            # total += targets.size(0)
+            # # For regression
+            # predicted_height = torch.round(out_main.squeeze())
+            # predicted_height = torch.clamp(predicted_height, min=1, max=6)
+            # predicted_height = predicted_height.long()
+
+            # target_height = targets['stable_height'].long()
+            # correct += (predicted_height == target_height).sum().item()
+            # total += target_height.size(0)
 
     avg_val_loss = val_loss / len(loaders['val'])
     accuracy = 100 * correct / total

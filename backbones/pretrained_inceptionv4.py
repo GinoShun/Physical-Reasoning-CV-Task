@@ -30,7 +30,11 @@ class CNN(nn.Module):
         self.se_module = SEBlock(in_features)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         
-        self.fc_main = nn.Linear(in_features, 1)
+        # regression main task
+        # self.fc_main = nn.Linear(in_features, 1)
+
+        # classification main task
+        self.fc_main = nn.Linear(in_features, n_classes)
         
         # supplementary tasks
         self.fc_shapeset = nn.Linear(in_features, 2)
