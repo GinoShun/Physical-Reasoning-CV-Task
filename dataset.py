@@ -111,7 +111,7 @@ class StackDataset(Dataset):
 
     def split_data(self):
         """Split data into train and validation sets."""
-        split = StratifiedShuffleSplit(n_splits=1, test_size=0.1, random_state=42)
+        split = StratifiedShuffleSplit(n_splits=1, test_size=0.03, random_state=42)
         for train_index, test_index in split.split(self.metadata, self.metadata[self.stable_height]):
             train_data = self.metadata.loc[train_index]
             val_data = self.metadata.loc[test_index]

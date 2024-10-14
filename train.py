@@ -256,6 +256,8 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
     correct = 0
     total = 0
 
+    epsilon = 0.007
+
     if not os.path.exists(args.task_name):
         os.makedirs(args.task_name)
         print(f"Directory '{args.task_name}' created for task outputs.")
@@ -268,6 +270,7 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
 
         # Move inputs and targets to the device
         inputs = inputs.to(device)
+        # inputs.requires_grad = True  # for adversarial attack
         targets = {k: v.to(device) for k, v in targets.items()}
         # targets = targets.long()
 
@@ -283,8 +286,24 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
 
         # Backward pass
         loss.backward()
+        # loss.backward(retain_graph=True)  # for adversarial attack
 
-        # Optimize
+        # # generate adversarial samples
+        # inputs_grad = inputs.grad.data
+        # sign_data_grad = inputs_grad.sign()
+        # adversarial_inputs = inputs + epsilon * sign_data_grad
+        # adversarial_inputs = torch.clamp(adversarial_inputs, 0, 1) 
+
+        # # forward pass on adversarial samples
+        # adversarial_outputs = model(adversarial_inputs)
+        # adversarial_loss = criterion(adversarial_outputs, targets)
+
+        # # total loss
+        # total_loss = loss + adversarial_loss
+
+        # # clear gradients and update backpropagation with total loss
+        # optimizer.zero_grad()
+        # total_loss.backward()
         optimizer.step()
 
         # Update running loss
