@@ -14,14 +14,9 @@ class AddEdgeDetection(A.ImageOnlyTransform):
         super(AddEdgeDetection, self).__init__(always_apply, p)
 
     def apply(self, img, **params):
-        # img 是 numpy 数组，形状为 (H, W, C)
-        # 转换为灰度图
         gray_image = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        # 进行边缘检测
         edges = cv2.Canny(gray_image, threshold1=100, threshold2=200)
-        # 将边缘结果归一化到 [0, 1]
         edges = edges / 255.0
-        # 将边缘结果添加为第 4 个通道
         edges = edges[:, :, np.newaxis]
         img_with_edges = np.concatenate((img, edges), axis=2)
         return img_with_edges
@@ -31,20 +26,25 @@ class AddEdgeDetection(A.ImageOnlyTransform):
 
 
 class StackDataset(Dataset):
-    def __init__(self, csv_file, image_dir, img_size, stable_height, train=True, testMode=False, remove6=False):
+    def __init__(self, csv_file, image_dir, img_size, stable_height, train=True, testMode=False, remove6=False, doSplit=True):
         self.image_dir = image_dir
         self.train = train
         self.testMode = testMode
         self.remove6 = remove6
         self.img_size = img_size
+        self.doSplit = doSplit
         self.stable_height = stable_height
         self.metadata = pd.read_csv(csv_file)
         
         if not testMode:
             # Split data into training and validation sets
-            self.train_data, self.val_data = self.split_data()
+            if self.doSplit:
+                self.train_data, self.val_data = self.split_data()
+                self.data_frame = self.train_data if train else self.val_data
+            else:
+                self.data_frame = self.metadata
 
-            self.data_frame = self.train_data if train else self.val_data
+            
             self.image_ids = self.data_frame['id'].values
             # -1 if for classification
             self.labels = self.data_frame[self.stable_height].values - 1
@@ -91,16 +91,20 @@ class StackDataset(Dataset):
                 GaussNoise(var_limit=(10.0, 50.0), p=0.3),
                 # CoarseDropout(max_holes=8, max_height=16, max_width=16, p=0.5),
 
-                AddEdgeDetection(p=1.0),  # Add edge detection
-                Normalize(mean=(0.485, 0.456, 0.406, 0.0), std=(0.229, 0.224, 0.225, 1.0)),
+                # AddEdgeDetection(p=1.0),  # Add edge detection
+                # Normalize(mean=(0.485, 0.456, 0.406, 0.0), std=(0.229, 0.224, 0.225, 1.0)),
+
+                Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 # Normalize(mean=0.0, std=1.0, max_pixel_value=255.0), 
                 ToTensorV2(),
             ])
         else:
             self.transform = Compose([
                 Resize(self.img_size, self.img_size),
-                AddEdgeDetection(p=1.0),  # Add edge detection
-                Normalize(mean=(0.485, 0.456, 0.406, 0.0), std=(0.229, 0.224, 0.225, 1.0)),
+                # AddEdgeDetection(p=1.0),  # Add edge detection
+                # Normalize(mean=(0.485, 0.456, 0.406, 0.0), std=(0.229, 0.224, 0.225, 1.0)),
+
+                Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 # Normalize(mean=0.0, std=1.0, max_pixel_value=255.0),
                 ToTensorV2(),
             ])
@@ -148,7 +152,7 @@ class StackDataset(Dataset):
                 'shapeset': label_shapeset,
                 'type': label_type,
                 'total_height': total_height,
-                'num_unstable': total_height - label_main,
+                # 'num_unstable': total_height - label_main,
                 'instability_type': label_instability,
                 'cam_angle': label_cam_angle
             }

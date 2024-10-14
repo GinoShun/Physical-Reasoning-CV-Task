@@ -40,27 +40,108 @@ def load_data(args):
 
     return loaders
 
-def loss(outputs, targets, model):
-    out_main, out_shapeset, out_type, out_total_height, out_num_unstable, out_instability, out_cam_angle = outputs
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        ce_loss = nn.CrossEntropyLoss(reduction='none')(inputs, targets)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        else:
+            return focal_loss.sum()
+
+def loss_simple(outputs, targets):
+    # Unpack outputs and targets
+    out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle = outputs
     target_main = targets['stable_height']
     target_shapeset = targets['shapeset']
     target_type = targets['type']
     target_total_height = targets['total_height']
-    target_num_unstable = targets['num_unstable']
     target_instability = targets['instability_type']
     target_cam_angle = targets['cam_angle']
 
+    # Main Task Loss with Focal Loss
+    loss_main = FocalLoss(gamma=2)(out_main, target_main.long())
+
+    # Supplementary Tasks Losses
+    loss_shapeset = nn.CrossEntropyLoss()(out_shapeset, target_shapeset.long())
+    loss_type = nn.CrossEntropyLoss()(out_type, target_type.long())
+    loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
+    loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
+    loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
+
+    # Define fixed weights for each task
+    w_main = 1.0
+    w_total_height = 0.5
+    w_shapeset = 0.3
+    w_type = 0.4
+    w_instability = 0.5
+    w_cam_angle = 0.2
+
+    # human annotated weights! zhubao power!
+    # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 
+    # 0.2 * (loss_shapeset + loss_instability) + 
+    # 0.1 * (loss_type + loss_cam_angle))
+
+    # Total loss without uncertainty weighting
+    total_loss = w_main * loss_main + \
+                 w_total_height * loss_total_height + \
+                 w_shapeset * loss_shapeset + \
+                 w_type * loss_type + \
+                 w_instability * loss_instability + \
+                 w_cam_angle * loss_cam_angle
+
+    return total_loss
+
+def loss(outputs, targets, model):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # out_main, out_shapeset, out_type, out_total_height, out_num_unstable, out_instability, out_cam_angle = outputs
+    out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle = outputs
+    target_main = targets['stable_height']
+    target_shapeset = targets['shapeset']
+    target_type = targets['type']
+    target_total_height = targets['total_height']
+    # target_num_unstable = targets['num_unstable']
+    target_instability = targets['instability_type']
+    target_cam_angle = targets['cam_angle']
+
+    # Define additional weight for type=2 samples
+    type2_weight = 1.5  # TODO: adjust
+
+    # Compute a weight tensor where type=2 samples get a higher weight
+    main_task_weight = torch.ones_like(target_type, dtype=torch.float32)
+    main_task_weight[target_type == 2] = type2_weight
+
+    # Ensure main_task_weight is on the same device as model outputs
+    main_task_weight = main_task_weight.to(device)
+
+    # Compute the CrossEntropyLoss per sample
+    loss_fn = nn.CrossEntropyLoss(reduction='none')
+    per_sample_loss = loss_fn(out_main, target_main.long())
+
+    # Multiply per-sample losses by the weights
+    weighted_loss = main_task_weight * per_sample_loss
+
+    # Take the mean of the weighted losses
+    loss_main = weighted_loss.mean()
+
+    # # classification main task
+    # loss_main = nn.CrossEntropyLoss()(out_main, target_main.long())
+
     # regression main task
     # loss_main = nn.MSELoss()(out_main.squeeze(), target_main.float())
-
-    # classification main task
-    loss_main = nn.CrossEntropyLoss()(out_main, target_main.long())
 
     # supplementary tasks
     loss_shapeset = nn.CrossEntropyLoss()(out_shapeset, target_shapeset.long())
     loss_type = nn.CrossEntropyLoss()(out_type, target_type.long())
     loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
-    loss_num_unstable = nn.CrossEntropyLoss()(out_num_unstable, target_num_unstable.long())
+    # loss_num_unstable = nn.CrossEntropyLoss()(out_num_unstable, target_num_unstable.long())
     loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
 
@@ -75,7 +156,7 @@ def loss(outputs, targets, model):
     log_sigma_total_height = torch.clamp(model.log_sigma_total_height, min=min_log_sigma, max=max_log_sigma)
     log_sigma_instability = torch.clamp(model.log_sigma_instability, min=min_log_sigma, max=max_log_sigma)
     log_sigma_cam_angle = torch.clamp(model.log_sigma_cam_angle, min=min_log_sigma, max=max_log_sigma)
-    log_sigma_num_unstable = torch.clamp(model.log_sigma_num_unstable, min=min_log_sigma, max=max_log_sigma)
+    # log_sigma_num_unstable = torch.clamp(model.log_sigma_num_unstable, min=min_log_sigma, max=max_log_sigma)
 
     # learnable log sig
     sigma_main = torch.exp(log_sigma_main)
@@ -84,32 +165,32 @@ def loss(outputs, targets, model):
     sigma_total_height = torch.exp(log_sigma_total_height)
     sigma_instability = torch.exp(log_sigma_instability)
     sigma_cam_angle = torch.exp(log_sigma_cam_angle)
-    sigma_num_unstable = torch.exp(log_sigma_num_unstable)
+    # sigma_num_unstable = torch.exp(log_sigma_num_unstable)
 
     # Adding constraint: num_unstable = total_height - stable_height
     predicted_total_height = torch.argmax(out_total_height, dim=1)
     predicted_stable_height = torch.argmax(out_main, dim=1)
-    predicted_num_unstable = torch.argmax(out_num_unstable, dim=1)
+    # predicted_num_unstable = torch.argmax(out_num_unstable, dim=1)
 
-    num_unstable_diff = torch.abs(predicted_num_unstable - (predicted_total_height - predicted_stable_height))
+    # num_unstable_diff = torch.abs(predicted_num_unstable - (predicted_total_height - predicted_stable_height))
+    # constraint_loss = num_unstable_diff.float().mean()
 
-    constraint_loss = num_unstable_diff.float().mean()
+    # Adding constraint: total_height > stable_height
+    constraint_loss = F.relu(predicted_stable_height - predicted_total_height).float().mean()
+
     # punishment factor
     lambda_constraint = 1.0
 
     # total loss
+    instability_weight = 1.2  # TODO: adjust
     beta = 0.5
-
-    # human annotated weights! zhubao power!
-    # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 0.2 * (loss_shapeset + loss_instability) + 0.1 * (loss_type + loss_cam_angle))
     
     # Total loss
     total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + beta * log_sigma_main + \
                  (1 / (2 * sigma_total_height ** 2)) * loss_total_height + beta * log_sigma_total_height + \
-                 (1 / (2 * sigma_num_unstable ** 2)) * loss_num_unstable + beta * log_sigma_num_unstable + \
                  (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + beta * log_sigma_shapeset + \
                  (1 / (2 * sigma_type ** 2)) * loss_type + beta * log_sigma_type + \
-                 (1 / (2 * sigma_instability ** 2)) * loss_instability + beta * log_sigma_instability + \
+                 instability_weight  * (1 / (2 * sigma_instability ** 2)) * loss_instability + beta * log_sigma_instability + \
                  (1 / (2 * sigma_cam_angle ** 2)) * loss_cam_angle + beta * log_sigma_cam_angle + \
                  lambda_constraint * constraint_loss
 
@@ -137,19 +218,22 @@ def train_loop(args):
     model.to(device)
 
     # Loss and optimizer
-    criterion = loss
+    # criterion = loss
+    criterion = loss_simple
+
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
-    # different lr for log sigmas
-    optimizer = torch.optim.AdamW([
-        {'params': [param for name, param in model.named_parameters() if 'log_sigma' not in name]},
-        {'params': [param for name, param in model.named_parameters() if 'log_sigma' in name], 'lr': args.lr * 0.1}
-    ], lr=args.lr, weight_decay=1e-4)
+    # # different lr for log sigmas
+    # optimizer = torch.optim.AdamW([
+    #     {'params': [param for name, param in model.named_parameters() if 'log_sigma' not in name]},
+    #     {'params': [param for name, param in model.named_parameters() if 'log_sigma' in name], 'lr': args.lr * 0.1}
+    # ], lr=args.lr, weight_decay=1e-4)
+
 
     # Learning rate scheduler
-    scheduler = CosineAnnealingLR(optimizer, T_max=24)
+    scheduler = CosineAnnealingLR(optimizer, T_max=20)
 
     # Epoch loop
     for epoch in range(args.n_epochs):
@@ -195,7 +279,7 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
 
         # Forward pass
         outputs = model(inputs)  # outputs shape is (batch_size, 1)
-        loss = criterion(outputs, targets, model)
+        loss = criterion(outputs, targets)
 
         # Backward pass
         loss.backward()
@@ -247,7 +331,7 @@ def validate(epoch, model, loaders, criterion, device):
 
             # Forward pass
             outputs = model(inputs)
-            loss = criterion(outputs, targets, model)
+            loss = criterion(outputs, targets)
             val_loss += loss.item()
 
             # Calculate accuracy

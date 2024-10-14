@@ -2,14 +2,14 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp19(loss_with_constraints_base_exp16)"
+TASK_NAME="models/exp23_try_tuning"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4
 BATCH_SIZE_TRAIN=64
 BATCH_SIZE_TEST=64
 N_EPOCHS=40
-LEARNING_RATE=0.0005
+LEARNING_RATE=0.001
 MOMENTUM=0.9
 NETWORK="pretrained_inceptionv4"
 
