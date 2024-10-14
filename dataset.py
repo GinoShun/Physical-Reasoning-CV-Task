@@ -147,7 +147,8 @@ class StackDataset(Dataset):
                 'stable_height': label_main,
                 'shapeset': label_shapeset,
                 'type': label_type,
-                'total_height': total_height,
+                # 'total_height': total_height,
+                'num_unstable': total_height - label_main,
                 'instability_type': label_instability,
                 'cam_angle': label_cam_angle
             }

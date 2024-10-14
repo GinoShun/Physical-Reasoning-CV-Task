@@ -19,7 +19,7 @@ class SEBlock(nn.Module):
         return x * y
 
 class CNN(nn.Module):
-    def __init__(self, n_classes=5):
+    def __init__(self, n_classes=6):
         super(CNN, self).__init__()
         self.base_model = timm.create_model('inception_v4', pretrained=True)
         # self.base_model = pretrainedmodels.__dict__['inceptionv4'](pretrained='imagenet')
@@ -43,8 +43,9 @@ class CNN(nn.Module):
         # supplementary tasks
         self.fc_shapeset = nn.Linear(in_features, 2)
         self.fc_type = nn.Linear(in_features, 2)
-        self.fc_total_height = nn.Linear(in_features, n_classes+1)  # classification
+        # self.fc_total_height = nn.Linear(in_features, n_classes)  # classification
         # self.fc_total_height = nn.Linear(in_features, 1)  # regression
+        self.fc_num_unstable = nn.Linear(in_features, n_classes)  # 0-5 difference
         self.fc_instability = nn.Linear(in_features, 3)
         self.fc_cam_angle = nn.Linear(in_features, 2)
 
@@ -52,7 +53,8 @@ class CNN(nn.Module):
         self.log_sigma_main = nn.Parameter(torch.tensor(0.0))
         self.log_sigma_shapeset = nn.Parameter(torch.tensor(0.0))
         self.log_sigma_type = nn.Parameter(torch.tensor(0.0))
-        self.log_sigma_total_height = nn.Parameter(torch.tensor(0.0))
+        # self.log_sigma_total_height = nn.Parameter(torch.tensor(0.0))
+        self.log_sigma_num_unstable = nn.Parameter(torch.tensor(0.0))
         self.log_sigma_instability = nn.Parameter(torch.tensor(0.0))
         self.log_sigma_cam_angle = nn.Parameter(torch.tensor(0.0))
         
@@ -67,9 +69,10 @@ class CNN(nn.Module):
         
         out_shapeset = self.fc_shapeset(x)
         out_type = self.fc_type(x)
-        out_total_height = self.fc_total_height(x)
+        # out_total_height = self.fc_total_height(x)
+        out_num_unstable = self.fc_num_unstable(x)
         out_instability = self.fc_instability(x)
         out_cam_angle = self.fc_cam_angle(x)
         
-        return out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle
+        return out_main, out_shapeset, out_type, out_num_unstable, out_instability, out_cam_angle
 

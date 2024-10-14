@@ -27,8 +27,8 @@ def import_network(network_file):
 
 # Function to load data and create loaders
 def load_data(args):
-    train_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=True, remove6=True)
-    val_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=False, remove6=True)
+    train_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=True)
+    val_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=False)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size_train, shuffle=True, num_workers=args.num_workers)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size_test, shuffle=False, num_workers=args.num_workers)
@@ -41,11 +41,12 @@ def load_data(args):
     return loaders
 
 def loss(outputs, targets, model):
-    out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle = outputs
+    out_main, out_shapeset, out_type, out_num_unstable, out_instability, out_cam_angle = outputs
     target_main = targets['stable_height']
     target_shapeset = targets['shapeset']
     target_type = targets['type']
-    target_total_height = targets['total_height']
+    # target_total_height = targets['total_height']
+    target_num_unstable = targets['num_unstable']
     target_instability = targets['instability_type']
     target_cam_angle = targets['cam_angle']
 
@@ -58,7 +59,8 @@ def loss(outputs, targets, model):
     # supplementary tasks
     loss_shapeset = nn.CrossEntropyLoss()(out_shapeset, target_shapeset.long())
     loss_type = nn.CrossEntropyLoss()(out_type, target_type.long())
-    loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
+    # loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
+    loss_num_unstable = nn.CrossEntropyLoss()(out_num_unstable, target_num_unstable.long())
     loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
 
@@ -66,19 +68,20 @@ def loss(outputs, targets, model):
     sigma_main = torch.exp(model.log_sigma_main)
     sigma_shapeset = torch.exp(model.log_sigma_shapeset)
     sigma_type = torch.exp(model.log_sigma_type)
-    sigma_total_height = torch.exp(model.log_sigma_total_height)
+    # sigma_total_height = torch.exp(model.log_sigma_total_height)
+    sigma_num_unstable = torch.exp(model.log_sigma_num_unstable)
     sigma_instability = torch.exp(model.log_sigma_instability)
     sigma_cam_angle = torch.exp(model.log_sigma_cam_angle)
 
     # total loss
+    # alpha = 2.0
 
     # human annotated weights! zhubao power!
     # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 0.2 * (loss_shapeset + loss_instability) + 0.1 * (loss_type + loss_cam_angle))
     
     # learnable weights
-        # learnable log sig
     total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + model.log_sigma_main + \
-                 (1 / (2 * sigma_total_height ** 2)) * loss_total_height + model.log_sigma_total_height + \
+                 (1 / (2 * sigma_num_unstable ** 2)) * loss_num_unstable + model.log_sigma_num_unstable + \
                  (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + model.log_sigma_shapeset + \
                  (1 / (2 * sigma_type ** 2)) * loss_type + model.log_sigma_type + \
                  (1 / (2 * sigma_instability ** 2)) * loss_instability + model.log_sigma_instability + \
