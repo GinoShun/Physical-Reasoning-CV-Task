@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp15_trail(base_exp14)"
+TASK_NAME="models/exp16(edge_detection_base_exp15)"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4

@@ -23,6 +23,10 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
         self.base_model = timm.create_model('inception_v4', pretrained=True)
         # self.base_model = pretrainedmodels.__dict__['inceptionv4'](pretrained='imagenet')
+
+        # edge detection added
+        self.base_model.features[0].conv = nn.Conv2d(4, 32, kernel_size=3, stride=2, bias=False)
+        nn.init.kaiming_normal_(self.base_model.features[0].conv.weight, mode='fan_out', nonlinearity='relu')
         
         in_features = self.base_model.last_linear.in_features
         self.base_model.last_linear = nn.Identity()
@@ -39,7 +43,8 @@ class CNN(nn.Module):
         # supplementary tasks
         self.fc_shapeset = nn.Linear(in_features, 2)
         self.fc_type = nn.Linear(in_features, 2)
-        self.fc_total_height = nn.Linear(in_features, n_classes)
+        self.fc_total_height = nn.Linear(in_features, n_classes)  # classification
+        # self.fc_total_height = nn.Linear(in_features, 1)  # regression
         self.fc_instability = nn.Linear(in_features, 3)
         self.fc_cam_angle = nn.Linear(in_features, 2)
 

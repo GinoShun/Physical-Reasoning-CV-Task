@@ -6,6 +6,29 @@ import cv2
 import numpy as np
 from albumentations import Compose, Normalize, HorizontalFlip, ShiftScaleRotate, RGBShift, RandomBrightnessContrast, Perspective, HueSaturationValue, GaussNoise, CoarseDropout, Resize, ColorJitter
 from albumentations.pytorch import ToTensorV2
+import albumentations as A
+
+
+class AddEdgeDetection(A.ImageOnlyTransform):
+    def __init__(self, always_apply=False, p=1.0):
+        super(AddEdgeDetection, self).__init__(always_apply, p)
+
+    def apply(self, img, **params):
+        # img 是 numpy 数组，形状为 (H, W, C)
+        # 转换为灰度图
+        gray_image = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        # 进行边缘检测
+        edges = cv2.Canny(gray_image, threshold1=100, threshold2=200)
+        # 将边缘结果归一化到 [0, 1]
+        edges = edges / 255.0
+        # 将边缘结果添加为第 4 个通道
+        edges = edges[:, :, np.newaxis]
+        img_with_edges = np.concatenate((img, edges), axis=2)
+        return img_with_edges
+
+    def get_transform_init_args_names(self):
+        return ()
+
 
 class StackDataset(Dataset):
     def __init__(self, csv_file, image_dir, img_size, stable_height, train=True, testMode=False):
@@ -49,14 +72,17 @@ class StackDataset(Dataset):
                 RandomBrightnessContrast(p=0.5),
                 GaussNoise(var_limit=(10.0, 50.0), p=0.3),
                 # CoarseDropout(max_holes=8, max_height=16, max_width=16, p=0.5),
-                Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+
+                AddEdgeDetection(p=1.0),  # Add edge detection
+                Normalize(mean=(0.485, 0.456, 0.406, 0.0), std=(0.229, 0.224, 0.225, 1.0)),
                 # Normalize(mean=0.0, std=1.0, max_pixel_value=255.0), 
                 ToTensorV2(),
             ])
         else:
             self.transform = Compose([
                 Resize(self.img_size, self.img_size),
-                Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                AddEdgeDetection(p=1.0),  # Add edge detection
+                Normalize(mean=(0.485, 0.456, 0.406, 0.0), std=(0.229, 0.224, 0.225, 1.0)),
                 # Normalize(mean=0.0, std=1.0, max_pixel_value=255.0),
                 ToTensorV2(),
             ])
@@ -108,7 +134,7 @@ class StackDataset(Dataset):
 
 if __name__ == '__main__':
     dataset = StackDataset(csv_file='data/train.csv', image_dir='data/train', img_size = 224, stable_height='stable_height', train=True)
-    train_loader = DataLoader(dataset, batch_size=128, shuffle=True)
+    train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
     for images, labels in train_loader:
         print(images.shape, labels.shape)
         break
