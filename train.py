@@ -27,8 +27,8 @@ def import_network(network_file):
 
 # Function to load data and create loaders
 def load_data(args):
-    train_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=True)
-    val_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=False)
+    train_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=True, remove6=True)
+    val_dataset = dataset.StackDataset(csv_file=args.metadata_path, image_dir=args.picture_path, img_size=224, stable_height = 'stable_height', train=False, remove6=True)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size_train, shuffle=True, num_workers=args.num_workers)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size_test, shuffle=False, num_workers=args.num_workers)
@@ -155,8 +155,8 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
         targets = {k: v.to(device) for k, v in targets.items()}
         # targets = targets.long()
 
-        # # Debugging: Print minimum and maximum values of targets
-        # print(f"Min target: {targets.min()}, Max target: {targets.max()}")
+        # # Debugging: Print minimum and maximum values of target
+        # print("Labels range:", targets['stable_height'].min(), targets['stable_height'].max())
         
         # Zero the parameter gradients
         optimizer.zero_grad()

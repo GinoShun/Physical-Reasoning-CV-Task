@@ -31,10 +31,11 @@ class AddEdgeDetection(A.ImageOnlyTransform):
 
 
 class StackDataset(Dataset):
-    def __init__(self, csv_file, image_dir, img_size, stable_height, train=True, testMode=False):
+    def __init__(self, csv_file, image_dir, img_size, stable_height, train=True, testMode=False, remove6=False):
         self.image_dir = image_dir
         self.train = train
         self.testMode = testMode
+        self.remove6 = remove6
         self.img_size = img_size
         self.stable_height = stable_height
         self.metadata = pd.read_csv(csv_file)
@@ -53,6 +54,23 @@ class StackDataset(Dataset):
             self.total_height = self.data_frame['total_height'].values - 1
             self.instability_type = self.data_frame['instability_type'].values
             self.cam_angle = self.data_frame['cam_angle'].values - 1
+
+            if self.remove6:
+                # remove label 5 (original label 6)
+                valid_indices = self.labels != 5
+                self.labels = self.labels[valid_indices]
+                self.image_ids = self.image_ids[valid_indices]
+
+                self.shapeset = self.shapeset[valid_indices]
+                self.type = self.type[valid_indices]
+                self.total_height = self.total_height[valid_indices]
+                self.instability_type = self.instability_type[valid_indices]
+                self.cam_angle = self.cam_angle[valid_indices]
+
+                if self.train:
+                    print(f"Training data: {len(self.image_ids)} samples")
+                else:
+                    print(f"Validation data: {len(self.image_ids)} samples")         
         else:
             # test only
             self.data_frame = self.metadata
@@ -93,8 +111,10 @@ class StackDataset(Dataset):
         for train_index, test_index in split.split(self.metadata, self.metadata[self.stable_height]):
             train_data = self.metadata.loc[train_index]
             val_data = self.metadata.loc[test_index]
-        print(f"Training data: {len(train_data)} samples")
-        print(f"Validation data: {len(val_data)} samples")
+        
+        if not self.remove6:
+            print(f"Training data: {len(train_data)} samples")
+            print(f"Validation data: {len(val_data)} samples")
         return train_data, val_data
 
     def __len__(self):

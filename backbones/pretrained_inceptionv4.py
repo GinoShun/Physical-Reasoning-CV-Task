@@ -19,7 +19,7 @@ class SEBlock(nn.Module):
         return x * y
 
 class CNN(nn.Module):
-    def __init__(self, n_classes=6):
+    def __init__(self, n_classes=5):
         super(CNN, self).__init__()
         self.base_model = timm.create_model('inception_v4', pretrained=True)
         # self.base_model = pretrainedmodels.__dict__['inceptionv4'](pretrained='imagenet')
@@ -43,7 +43,7 @@ class CNN(nn.Module):
         # supplementary tasks
         self.fc_shapeset = nn.Linear(in_features, 2)
         self.fc_type = nn.Linear(in_features, 2)
-        self.fc_total_height = nn.Linear(in_features, n_classes)  # classification
+        self.fc_total_height = nn.Linear(in_features, n_classes+1)  # classification
         # self.fc_total_height = nn.Linear(in_features, 1)  # regression
         self.fc_instability = nn.Linear(in_features, 3)
         self.fc_cam_angle = nn.Linear(in_features, 2)
