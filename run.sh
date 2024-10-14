@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp14(loss_factor_tuning_learnable_weights_base_exp12)"
+TASK_NAME="models/exp15_trail(base_exp14)"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4

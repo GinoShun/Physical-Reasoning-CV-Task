@@ -108,8 +108,13 @@ def train_loop(args):
     criterion = loss
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
+    # different lr for log sigmas
+    optimizer = torch.optim.AdamW([
+        {'params': [param for name, param in model.named_parameters() if 'log_sigma' not in name]},
+        {'params': [param for name, param in model.named_parameters() if 'log_sigma' in name], 'lr': args.lr * 0.1}
+    ], lr=args.lr, weight_decay=1e-4)
 
     # Learning rate scheduler
     scheduler = CosineAnnealingLR(optimizer, T_max=24)
