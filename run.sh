@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp18(use_height_diff_base_exp16)"
+TASK_NAME="models/exp19(loss_with_constraints_base_exp16)"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4

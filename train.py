@@ -41,11 +41,11 @@ def load_data(args):
     return loaders
 
 def loss(outputs, targets, model):
-    out_main, out_shapeset, out_type, out_num_unstable, out_instability, out_cam_angle = outputs
+    out_main, out_shapeset, out_type, out_total_height, out_num_unstable, out_instability, out_cam_angle = outputs
     target_main = targets['stable_height']
     target_shapeset = targets['shapeset']
     target_type = targets['type']
-    # target_total_height = targets['total_height']
+    target_total_height = targets['total_height']
     target_num_unstable = targets['num_unstable']
     target_instability = targets['instability_type']
     target_cam_angle = targets['cam_angle']
@@ -59,33 +59,62 @@ def loss(outputs, targets, model):
     # supplementary tasks
     loss_shapeset = nn.CrossEntropyLoss()(out_shapeset, target_shapeset.long())
     loss_type = nn.CrossEntropyLoss()(out_type, target_type.long())
-    # loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
+    loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
     loss_num_unstable = nn.CrossEntropyLoss()(out_num_unstable, target_num_unstable.long())
     loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
 
+    # set min and max values for log sigmas
+    min_log_sigma = -3.0 
+    max_log_sigma = 3.0
+
+    # Clamping log_sigma to prevent extreme values
+    log_sigma_main = torch.clamp(model.log_sigma_main, min=min_log_sigma, max=max_log_sigma)
+    log_sigma_shapeset = torch.clamp(model.log_sigma_shapeset, min=min_log_sigma, max=max_log_sigma)
+    log_sigma_type = torch.clamp(model.log_sigma_type, min=min_log_sigma, max=max_log_sigma)
+    log_sigma_total_height = torch.clamp(model.log_sigma_total_height, min=min_log_sigma, max=max_log_sigma)
+    log_sigma_instability = torch.clamp(model.log_sigma_instability, min=min_log_sigma, max=max_log_sigma)
+    log_sigma_cam_angle = torch.clamp(model.log_sigma_cam_angle, min=min_log_sigma, max=max_log_sigma)
+    log_sigma_num_unstable = torch.clamp(model.log_sigma_num_unstable, min=min_log_sigma, max=max_log_sigma)
+
     # learnable log sig
-    sigma_main = torch.exp(model.log_sigma_main)
-    sigma_shapeset = torch.exp(model.log_sigma_shapeset)
-    sigma_type = torch.exp(model.log_sigma_type)
-    # sigma_total_height = torch.exp(model.log_sigma_total_height)
-    sigma_num_unstable = torch.exp(model.log_sigma_num_unstable)
-    sigma_instability = torch.exp(model.log_sigma_instability)
-    sigma_cam_angle = torch.exp(model.log_sigma_cam_angle)
+    sigma_main = torch.exp(log_sigma_main)
+    sigma_shapeset = torch.exp(log_sigma_shapeset)
+    sigma_type = torch.exp(log_sigma_type)
+    sigma_total_height = torch.exp(log_sigma_total_height)
+    sigma_instability = torch.exp(log_sigma_instability)
+    sigma_cam_angle = torch.exp(log_sigma_cam_angle)
+    sigma_num_unstable = torch.exp(log_sigma_num_unstable)
+
+    # Adding constraint: num_unstable = total_height - stable_height
+    predicted_total_height = torch.argmax(out_total_height, dim=1)
+    predicted_stable_height = torch.argmax(out_main, dim=1)
+    predicted_num_unstable = torch.argmax(out_num_unstable, dim=1)
+
+    num_unstable_diff = torch.abs(predicted_num_unstable - (predicted_total_height - predicted_stable_height))
+
+    constraint_loss = num_unstable_diff.float().mean()
+    # punishment factor
+    lambda_constraint = 1.0
 
     # total loss
-    # alpha = 2.0
+    beta = 0.5
 
     # human annotated weights! zhubao power!
     # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 0.2 * (loss_shapeset + loss_instability) + 0.1 * (loss_type + loss_cam_angle))
     
-    # learnable weights
-    total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + model.log_sigma_main + \
-                 (1 / (2 * sigma_num_unstable ** 2)) * loss_num_unstable + model.log_sigma_num_unstable + \
-                 (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + model.log_sigma_shapeset + \
-                 (1 / (2 * sigma_type ** 2)) * loss_type + model.log_sigma_type + \
-                 (1 / (2 * sigma_instability ** 2)) * loss_instability + model.log_sigma_instability + \
-                 (1 / (2 * sigma_cam_angle ** 2)) * loss_cam_angle + model.log_sigma_cam_angle
+    # Total loss
+    total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + beta * log_sigma_main + \
+                 (1 / (2 * sigma_total_height ** 2)) * loss_total_height + beta * log_sigma_total_height + \
+                 (1 / (2 * sigma_num_unstable ** 2)) * loss_num_unstable + beta * log_sigma_num_unstable + \
+                 (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + beta * log_sigma_shapeset + \
+                 (1 / (2 * sigma_type ** 2)) * loss_type + beta * log_sigma_type + \
+                 (1 / (2 * sigma_instability ** 2)) * loss_instability + beta * log_sigma_instability + \
+                 (1 / (2 * sigma_cam_angle ** 2)) * loss_cam_angle + beta * log_sigma_cam_angle + \
+                 lambda_constraint * constraint_loss
+
+    # Ensure total_loss is not negative
+    total_loss = F.relu(total_loss)
     
     return total_loss
 
