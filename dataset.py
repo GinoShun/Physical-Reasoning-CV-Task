@@ -8,6 +8,9 @@ from albumentations import Compose, Normalize, HorizontalFlip, ShiftScaleRotate,
 from albumentations.pytorch import ToTensorV2
 import albumentations as A
 
+import warnings
+warnings.filterwarnings("ignore", message="h5py is running against HDF5")
+
 
 class AddEdgeDetection(A.ImageOnlyTransform):
     def __init__(self, always_apply=False, p=1.0):
@@ -111,7 +114,7 @@ class StackDataset(Dataset):
 
     def split_data(self):
         """Split data into train and validation sets."""
-        split = StratifiedShuffleSplit(n_splits=1, test_size=0.04, random_state=42)
+        split = StratifiedShuffleSplit(n_splits=1, test_size=0.02, random_state=42)
         for train_index, test_index in split.split(self.metadata, self.metadata[self.stable_height]):
             train_data = self.metadata.loc[train_index]
             val_data = self.metadata.loc[test_index]

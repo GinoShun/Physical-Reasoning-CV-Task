@@ -10,6 +10,11 @@ from tqdm import tqdm
 import torch.optim.lr_scheduler as lr_scheduler
 import os, sys
 import importlib
+from torch.utils.tensorboard import SummaryWriter
+
+import warnings
+warnings.filterwarnings("ignore")
+
 
 train_loss_average = AverageMeter()
 train_losses = []
@@ -55,7 +60,7 @@ class FocalLoss(nn.Module):
         else:
             return focal_loss.sum()
 
-def loss_simple(outputs, targets):
+def loss_simple(outputs, targets, model):
     # Unpack outputs and targets
     out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle = outputs
     target_main = targets['stable_height']
@@ -75,26 +80,43 @@ def loss_simple(outputs, targets):
     loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
 
-    # Define fixed weights for each task
-    w_main = 1.0
-    w_total_height = 0.5
-    w_shapeset = 0.3
-    w_type = 0.4
-    w_instability = 0.5
-    w_cam_angle = 0.2
+    # # Define fixed weights for each task
+    # w_main = 1.0
+    # w_total_height = 0.5
+    # w_shapeset = 0.3
+    # w_type = 0.4
+    # w_instability = 0.5
+    # w_cam_angle = 0.2
 
-    # human annotated weights! zhubao power!
-    # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 
-    # 0.2 * (loss_shapeset + loss_instability) + 
-    # 0.1 * (loss_type + loss_cam_angle))
+    # # human annotated weights! zhubao power!
+    # # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 
+    # # 0.2 * (loss_shapeset + loss_instability) + 
+    # # 0.1 * (loss_type + loss_cam_angle))
 
-    # Total loss without uncertainty weighting
-    total_loss = w_main * loss_main + \
-                 w_total_height * loss_total_height + \
-                 w_shapeset * loss_shapeset + \
-                 w_type * loss_type + \
-                 w_instability * loss_instability + \
-                 w_cam_angle * loss_cam_angle
+    # # Total loss without uncertainty weighting
+    # total_loss = w_main * loss_main + \
+    #              w_total_height * loss_total_height + \
+    #              w_shapeset * loss_shapeset + \
+    #              w_type * loss_type + \
+    #              w_instability * loss_instability + \
+    #              w_cam_angle * loss_cam_angle
+
+    # Convert log sigma to sigma (exponential of log sigma)
+    sigma_main = torch.exp(model.log_sigma_main)
+    sigma_shapeset = torch.exp(model.log_sigma_shapeset)
+    sigma_type = torch.exp(model.log_sigma_type)
+    sigma_total_height = torch.exp(model.log_sigma_total_height)
+    sigma_instability = torch.exp(model.log_sigma_instability)
+    sigma_cam_angle = torch.exp(model.log_sigma_cam_angle)
+
+    # Total loss with uncertainty weighting
+    total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + torch.log(sigma_main) + \
+                 (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + torch.log(sigma_shapeset) + \
+                 (1 / (2 * sigma_type ** 2)) * loss_type + torch.log(sigma_type) + \
+                 (1 / (2 * sigma_total_height ** 2)) * loss_total_height + torch.log(sigma_total_height) + \
+                 (1 / (2 * sigma_instability ** 2)) * loss_instability + torch.log(sigma_instability) + \
+                 (1 / (2 * sigma_cam_angle ** 2)) * loss_cam_angle + torch.log(sigma_cam_angle)
+
 
     return total_loss
 
@@ -200,8 +222,33 @@ def loss(outputs, targets, model):
     return total_loss
 
 
+def get_scheduler_with_warmup(optimizer, warmup_iters, cosine_T_max, last_epoch):
+    # Define LambdaLR for warmup phase
+    warmup_scheduler = lr_scheduler.LambdaLR(
+        optimizer,
+        lr_lambda=lambda epoch: epoch / warmup_iters if epoch < warmup_iters else 1,
+        last_epoch=last_epoch
+    )
+
+    # Define CosineAnnealingLR for after warmup
+    cosine_scheduler = lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=cosine_T_max,
+        last_epoch=last_epoch
+    )
+    
+    return warmup_scheduler, cosine_scheduler
+
+
+
+
 # Main training loop
 def train_loop(args):
+    # Initialize TensorBoard writer
+    writer = SummaryWriter(log_dir=os.path.join(args.task_name, 'tensorboard_logs'))
+    use_new_optimizer = True
+    use_new_sceduler = True
+
     # Load data
     loaders = load_data(args)
     
@@ -217,13 +264,42 @@ def train_loop(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
+    # Check if resume path is provided to load model
+    start_epoch = 0
+    if args.resume_path:
+        if os.path.isfile(args.resume_path):
+            print(f"Loading model weights from {args.resume_path}")
+            model.load_state_dict(torch.load(args.resume_path, map_location=device, weights_only=True), strict=False)
+            print("Model weights loaded successfully.")
+            start_epoch = 24
+            # print(f"Loading checkpoint from {args.resume_path}")
+            # checkpoint = torch.load(args.resume_path, map_location=device)
+            
+            # # Load model weights
+            # model.load_state_dict(checkpoint['model_state_dict'])
+
+            # # Load optimizer and scheduler state
+            # if not use_new_optimizer:
+            #     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            # if not use_new_sceduler:
+            #     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+            # # Load the start epoch
+            # start_epoch = checkpoint['epoch'] + 1
+
+            # print(f"Resumed training from epoch {start_epoch}")
+        else:
+            print(f"Checkpoint not found at {args.resume_path}, starting from scratch.")
+
     # Loss and optimizer
     # criterion = loss
     criterion = loss_simple
 
-    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=5e-4, nesterov=True)
     # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+
+    print("start lr:", args.lr)
 
     # # different lr for log sigmas
     # optimizer = torch.optim.AdamW([
@@ -231,26 +307,60 @@ def train_loop(args):
     #     {'params': [param for name, param in model.named_parameters() if 'log_sigma' in name], 'lr': args.lr * 0.1}
     # ], lr=args.lr, weight_decay=1e-4)
 
+    # Warmup Scheduler
+    warmup_iters = int(0.1 * args.n_epochs)  # 10% of total epochs
+    cosine_T_max = 24
 
-    # Learning rate scheduler
-    scheduler = CosineAnnealingLR(optimizer, T_max=20)
+    # Manually set 'initial_lr' for each param group
+    for param_group in optimizer.param_groups:
+        if 'initial_lr' not in param_group:
+            param_group['initial_lr'] = 0.001
+
+
+    # Get both schedulers
+    warmup_scheduler, cosine_scheduler = get_scheduler_with_warmup(
+        optimizer, warmup_iters, cosine_T_max, last_epoch=start_epoch - 1
+    )
+
 
     # Epoch loop
-    for epoch in range(args.n_epochs):
-        train(epoch, model, loaders, args, criterion, optimizer, scheduler, device)
-        validate(epoch, model, loaders, criterion, device)
+    for epoch in range(start_epoch, args.n_epochs):
+        # warmup
+        if args.warmup == "True":
+            if epoch < warmup_iters:
+                print("warmup phase")
+                scheduler = warmup_scheduler
+            else:
+                scheduler = cosine_scheduler
+                # print("Finished warmup phase.")
+        else:
+            scheduler = cosine_scheduler
+            # print("No warmup phase, using cosine annealing scheduler.")
+
+        train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, writer)
+        validate(epoch, model, loaders, criterion, device, writer)
         scheduler.step()
 
         current_lr = optimizer.param_groups[0]['lr']
         print(f'Current Learning Rate after Epoch {epoch+1}: {current_lr}')
 
+        # Log learning rate
+        writer.add_scalar('Learning Rate', current_lr, epoch + 1)
+
         # Save the model after each epoch to the task_name directory
         model_save_path = os.path.join(args.task_name, f"model_epoch_{epoch+1}.pth")
-        torch.save(model.state_dict(), model_save_path)
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict()
+        }, model_save_path)
         # print(f"Model saved at {model_save_path}")
 
+    writer.close()  # Close the writer when training finishes
+
 # Training function
-def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
+def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, writer):
     model.train()  # Set model to training mode
     running_loss = 0.0
     correct = 0
@@ -282,7 +392,7 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
 
         # Forward pass
         outputs = model(inputs)  # outputs shape is (batch_size, 1)
-        loss = criterion(outputs, targets)
+        loss = criterion(outputs, targets, model)
 
         # Backward pass
         loss.backward()
@@ -332,11 +442,18 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device):
             # print(f'Epoch [{epoch+1}], Step [{idx}/{len(loaders["train"])}], Loss: {loss.item():.4f}')
         pbar.update(1)
 
+    # Calculate average loss and accuracy
+    total_loss = running_loss / len(loaders['train']) 
     accuracy = 100 * correct / total
+
+    # Log to TensorBoard
+    writer.add_scalar('Training Loss', total_loss, epoch + 1)
+    writer.add_scalar('Training Accuracy', accuracy, epoch + 1)
+
     print(f'\nEpoch [{epoch+1}], Average Loss: {running_loss / len(loaders["train"]):.4f}, Accuracy: {accuracy:.2f}%')
     
 # Validation function
-def validate(epoch, model, loaders, criterion, device):
+def validate(epoch, model, loaders, criterion, device, writer):
     model.eval()  # Set model to evaluation mode
     val_loss = 0.0
     correct = 0
@@ -350,7 +467,7 @@ def validate(epoch, model, loaders, criterion, device):
 
             # Forward pass
             outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            loss = criterion(outputs, targets, model)
             val_loss += loss.item()
 
             # Calculate accuracy
@@ -374,6 +491,11 @@ def validate(epoch, model, loaders, criterion, device):
 
     avg_val_loss = val_loss / len(loaders['val'])
     accuracy = 100 * correct / total
+
+    # Log to TensorBoard
+    writer.add_scalar('Validation Loss', avg_val_loss, epoch + 1)
+    writer.add_scalar('Validation Accuracy', accuracy, epoch + 1)
+
     print(f'Validation Loss after Epoch {epoch+1}: {avg_val_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
 
