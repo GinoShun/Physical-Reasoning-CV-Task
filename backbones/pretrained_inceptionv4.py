@@ -70,7 +70,7 @@ class CNN(nn.Module):
         # supplementary tasks
         self.fc_shapeset = nn.Linear(in_features, 2)
         self.fc_type = nn.Linear(in_features, 2)
-        self.fc_total_height = nn.Linear(in_features, n_classes)  # classification
+        self.fc_total_height = nn.Linear(in_features, n_classes-1)  # classification
         # self.fc_total_height = nn.Linear(in_features, 1)  # regression
         # self.fc_num_unstable = nn.Linear(in_features, n_classes)  # 0-5 difference
         self.fc_instability = nn.Linear(in_features, 3)

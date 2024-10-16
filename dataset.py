@@ -54,7 +54,7 @@ class StackDataset(Dataset):
 
             self.shapeset = self.data_frame['shapeset'].values - 1
             self.type = self.data_frame['type'].values - 1
-            self.total_height = self.data_frame['total_height'].values - 1
+            self.total_height = self.data_frame['total_height'].values - 2
             self.instability_type = self.data_frame['instability_type'].values
             self.cam_angle = self.data_frame['cam_angle'].values - 1
 
@@ -85,7 +85,7 @@ class StackDataset(Dataset):
             self.transform = Compose([
                 Resize(self.img_size, self.img_size),
                 HorizontalFlip(p=0.5),
-                ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=0, p=0.5), 
+                ShiftScaleRotate(shift_limit=0.1, scale_limit=0.2, rotate_limit=0, p=0.5), 
                 # Perspective(scale=(0.05, 0.1), p=0.5),
                 # RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
                 # HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=0.5),

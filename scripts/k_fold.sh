@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp28(10_fold_90_10)"
+TASK_NAME="models/exp29_5_fold_80_20"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4

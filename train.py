@@ -351,11 +351,11 @@ def train_loop(args):
     warmup_iters = int(0.1 * args.n_epochs)  # 10% of total epochs
     cosine_T_max = 24
 
-    if args.resume_path:
-        # Manually set 'initial_lr' for each param group
-        for param_group in optimizer.param_groups:
-            if 'initial_lr' not in param_group:
-                param_group['initial_lr'] = 0.001
+    # if args.resume_path:
+    #     # Manually set 'initial_lr' for each param group
+    #     for param_group in optimizer.param_groups:
+    #         if 'initial_lr' not in param_group:
+    #             param_group['initial_lr'] = 0.001
 
 
     # Get both schedulers
@@ -408,7 +408,7 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, 
     correct = 0
     total = 0
 
-    epsilon = 0.007
+    # epsilon = 0.007
 
     if not os.path.exists(args.task_name):
         os.makedirs(args.task_name)

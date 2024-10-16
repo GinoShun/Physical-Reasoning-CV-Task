@@ -156,117 +156,86 @@ def get_scheduler_with_warmup(optimizer, warmup_iters, cosine_T_max, last_epoch)
 
 # Main training loop
 def train_loop(args):
-    # Initialize TensorBoard writer
-    writer = SummaryWriter(log_dir=os.path.join(args.task_name, 'tensorboard_logs'))
     use_new_optimizer = True
     use_new_scheduler = True
 
     # Load data
     dataset_instance = load_data(args)
-    
-    # import network
+
+    # Import network
     network_module = import_network(args.network_file)
-    # Access the CNN class from the imported module
     CNN = getattr(network_module, 'CNN')  # Dynamically get CNN class
 
-    # Move model to appropriate device (GPU/CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 10-fold cross-validation
-    kf = KFold(n_splits=10, shuffle=True, random_state=42)
-    fold = 0
+    # 5-fold cross-validation
+    n_fold = 5
+    kf = KFold(n_splits=n_fold, shuffle=True, random_state=42)
 
-    for train_idx, val_idx in kf.split(dataset_instance):
-        print(f"Training fold {fold + 1}/10")
+    for fold, (train_idx, val_idx) in enumerate(kf.split(dataset_instance), 1):
+        print(f"Training fold {fold}/{n_fold}")
 
-        # create fold-specific data loaders
+        writer = SummaryWriter(log_dir=os.path.join(args.task_name, f'tensorboard_logs/fold_{fold}'))
+
+        # Create fold-specific data loaders
         train_subset = Subset(dataset_instance, train_idx)
         val_subset = Subset(dataset_instance, val_idx)
-        
+
         train_loader = DataLoader(train_subset, batch_size=args.batch_size_train, shuffle=True, num_workers=args.num_workers)
         val_loader = DataLoader(val_subset, batch_size=args.batch_size_test, shuffle=False, num_workers=args.num_workers)
-        
+
         loaders = {'train': train_loader, 'val': val_loader}
 
-        model = CNN()
-        model.to(device)
-
-        criterion = loss_simple 
-
+        model = CNN().to(device)
+        criterion = loss_simple
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
-        print("start lr:", args.lr)
 
-        # Warmup Scheduler
-        warmup_iters = int(0.1 * args.n_epochs)  # 10% of total epochs
+        warmup_iters = int(0.1 * args.n_epochs)
         cosine_T_max = 24
-
-        # Get both schedulers
         warmup_scheduler, cosine_scheduler = get_scheduler_with_warmup(
             optimizer, warmup_iters, cosine_T_max, last_epoch=-1
         )
 
-        # 初始化最优的验证准确率和损失
         best_val_accuracy = 0.0
         best_val_loss = float('inf')
 
         # Epoch loop
         for epoch in range(args.n_epochs):
-            # warmup
-            if args.warmup == "True":
-                if epoch < warmup_iters:
-                    print("warmup phase")
-                    scheduler = warmup_scheduler
-                else:
-                    scheduler = cosine_scheduler
-            else:
-                scheduler = cosine_scheduler
+            scheduler = warmup_scheduler if epoch < warmup_iters else cosine_scheduler
 
-            train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, writer)
-            avg_val_loss, val_accuracy = validate(epoch, model, loaders, criterion, device, writer)
+            train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, writer, fold)
+            avg_val_loss, val_accuracy = validate(epoch, model, loaders, criterion, device, writer, fold)
             scheduler.step()
 
             current_lr = optimizer.param_groups[0]['lr']
-            print(f'Current Learning Rate after Epoch {epoch+1}: {current_lr}')
+            writer.add_scalar(f'Fold_{fold}/Learning Rate', current_lr, epoch + 1)
 
-            # Log learning rate
-            writer.add_scalar(f'Fold_{fold+1}/Learning Rate', current_lr, epoch + 1)
-
-            # 保存最优模型逻辑
             if val_accuracy > best_val_accuracy or \
                 (val_accuracy == best_val_accuracy and avg_val_loss < best_val_loss):
                 best_val_accuracy = val_accuracy
                 best_val_loss = avg_val_loss
-                best_model_save_path = os.path.join(args.task_name, f"best_model_fold_{fold+1}.pth")
+                best_model_save_path = os.path.join(args.task_name, f"best_model_fold_{fold}.pth")
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }, best_model_save_path)
-                print(f"Best model for fold {fold+1} saved at epoch {epoch+1} with accuracy {val_accuracy:.4f} and loss {avg_val_loss:.4f}")
+                print(f"Best model for fold {fold} saved at epoch {epoch+1} with accuracy {val_accuracy:.4f} and loss {avg_val_loss:.4f}")
 
-        fold += 1
-
-    writer.close()  # Close the writer when training finishes
+        writer.close()
 
 # Training function
-def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, writer):
+def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, writer, fold):
     model.train()  # Set model to training mode
     running_loss = 0.0
     correct = 0
     total = 0
 
-    if not os.path.exists(args.task_name):
-        os.makedirs(args.task_name)
-        print(f"Directory '{args.task_name}' created for task outputs.")
-
     pbar = tqdm(loaders['train'], total=len(loaders['train']))
-    pbar.set_description(f"Training! Epoch {epoch} ")
+    pbar.set_description(f"Training Fold {fold} | Epoch {epoch + 1}")
 
     for idx, (inputs, targets) in enumerate(pbar):
-        # print(f"Batch {idx} loaded.")
-
-        # Move inputs and targets to the device
         inputs = inputs.to(device)
         targets = {k: v.to(device) for k, v in targets.items()}
         
@@ -274,21 +243,18 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, 
         optimizer.zero_grad()
 
         # Forward pass
-        outputs = model(inputs)  # outputs shape is (batch_size, 1)
+        outputs = model(inputs)
         loss = criterion(outputs, targets, model)
 
         # Backward pass
         loss.backward()
-
         optimizer.step()
 
         # Update running loss
         running_loss += loss.item()
 
         # Calculate accuracy
-        out_main = outputs[0]  # label
-
-        # For classification
+        out_main = outputs[0]
         _, predicted = torch.max(out_main, 1)
         target_height = targets['stable_height'].long()
         correct += (predicted == target_height).sum().item()
@@ -297,17 +263,17 @@ def train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, 
         pbar.update(1)
 
     # Calculate average loss and accuracy
-    total_loss = running_loss / len(loaders['train']) 
+    total_loss = running_loss / len(loaders['train'])
     accuracy = 100 * correct / total
 
-    # Log to TensorBoard
-    writer.add_scalar('Training Loss', total_loss, epoch + 1)
-    writer.add_scalar('Training Accuracy', accuracy, epoch + 1)
+    # record by fold
+    writer.add_scalar(f'Fold_{fold}/Training Loss', total_loss, epoch + 1)
+    writer.add_scalar(f'Fold_{fold}/Training Accuracy', accuracy, epoch + 1)
 
-    print(f'\nEpoch [{epoch+1}], Average Loss: {running_loss / len(loaders["train"]):.4f}, Accuracy: {accuracy:.2f}%')
+    print(f'\n[Fold {fold}] Epoch [{epoch+1}] - Training Loss: {total_loss:.4f}, Accuracy: {accuracy:.2f}%')
     
 # Validation function
-def validate(epoch, model, loaders, criterion, device, writer):
+def validate(epoch, model, loaders, criterion, device, writer, fold):
     model.eval()  # Set model to evaluation mode
     val_loss = 0.0
     correct = 0
@@ -325,22 +291,19 @@ def validate(epoch, model, loaders, criterion, device, writer):
 
             # Calculate accuracy
             out_main = outputs[0]
-
-            # For classification
             _, predicted = torch.max(out_main, 1)
             target_height = targets['stable_height'].long()
-
             correct += (predicted == target_height).sum().item()
             total += target_height.size(0)
 
     avg_val_loss = val_loss / len(loaders['val'])
     accuracy = 100 * correct / total
 
-    # Log to TensorBoard
-    writer.add_scalar('Validation Loss', avg_val_loss, epoch + 1)
-    writer.add_scalar('Validation Accuracy', accuracy, epoch + 1)
+    # record by fold
+    writer.add_scalar(f'Fold_{fold}/Validation Loss', avg_val_loss, epoch + 1)
+    writer.add_scalar(f'Fold_{fold}/Validation Accuracy', accuracy, epoch + 1)
 
-    print(f'Validation Loss after Epoch {epoch+1}: {avg_val_loss:.4f}, Accuracy: {accuracy:.2f}%')
+    print(f'[Fold {fold}] Validation Loss: {avg_val_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
     return avg_val_loss, accuracy
 
