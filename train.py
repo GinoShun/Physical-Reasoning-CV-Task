@@ -63,12 +63,15 @@ class FocalLoss(nn.Module):
 def loss_simple(outputs, targets, model):
     # Unpack outputs and targets
     out_main, out_shapeset, out_type, out_total_height, out_instability, out_cam_angle = outputs
+    # out_main, out_shapeset, out_type, out_total_height, out_num_unstable, out_instability, out_cam_angle = outputs
+    
     target_main = targets['stable_height']
     target_shapeset = targets['shapeset']
     target_type = targets['type']
     target_total_height = targets['total_height']
     target_instability = targets['instability_type']
     target_cam_angle = targets['cam_angle']
+    # target_num_unstable = targets['num_unstable']
 
     # Main Task Loss with Focal Loss
     loss_main = FocalLoss(gamma=2)(out_main, target_main.long())
@@ -79,44 +82,45 @@ def loss_simple(outputs, targets, model):
     loss_total_height = nn.CrossEntropyLoss()(out_total_height, target_total_height.long())
     loss_instability = nn.CrossEntropyLoss()(out_instability, target_instability.long())
     loss_cam_angle = nn.CrossEntropyLoss()(out_cam_angle, target_cam_angle.long())
+    # loss_num_unstable = nn.CrossEntropyLoss()(out_num_unstable, target_num_unstable.long())
 
-    # # Define fixed weights for each task
-    # w_main = 1.0
-    # w_total_height = 0.5
-    # w_shapeset = 0.3
-    # w_type = 0.4
-    # w_instability = 0.5
-    # w_cam_angle = 0.2
+    # Define fixed weights for each task
+    w_main = 1.0
+    w_total_height = 0.5
+    w_shapeset = 0.3
+    w_type = 0.4
+    w_instability = 0.5
+    w_cam_angle = 0.2
 
-    # # human annotated weights! zhubao power!
-    # # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 
-    # # 0.2 * (loss_shapeset + loss_instability) + 
-    # # 0.1 * (loss_type + loss_cam_angle))
+    # human annotated weights! zhubao power!
+    # total_loss = loss_main + 0.5 * (0.3 * loss_total_height + 
+    # 0.2 * (loss_shapeset + loss_instability) + 
+    # 0.1 * (loss_type + loss_cam_angle))
 
-    # # Total loss without uncertainty weighting
-    # total_loss = w_main * loss_main + \
-    #              w_total_height * loss_total_height + \
-    #              w_shapeset * loss_shapeset + \
-    #              w_type * loss_type + \
-    #              w_instability * loss_instability + \
-    #              w_cam_angle * loss_cam_angle
+    # Total loss without uncertainty weighting
+    total_loss = w_main * loss_main + \
+                 w_total_height * loss_total_height + \
+                 w_shapeset * loss_shapeset + \
+                 w_type * loss_type + \
+                 w_instability * loss_instability + \
+                 w_cam_angle * loss_cam_angle
 
-    # Convert log sigma to sigma (exponential of log sigma)
-    sigma_main = torch.exp(model.log_sigma_main)
-    sigma_shapeset = torch.exp(model.log_sigma_shapeset)
-    sigma_type = torch.exp(model.log_sigma_type)
-    sigma_total_height = torch.exp(model.log_sigma_total_height)
-    sigma_instability = torch.exp(model.log_sigma_instability)
-    sigma_cam_angle = torch.exp(model.log_sigma_cam_angle)
+    # # Convert log sigma to sigma (exponential of log sigma)
+    # sigma_main = torch.exp(model.log_sigma_main)
+    # sigma_shapeset = torch.exp(model.log_sigma_shapeset)
+    # sigma_type = torch.exp(model.log_sigma_type)
+    # sigma_total_height = torch.exp(model.log_sigma_total_height)
+    # sigma_instability = torch.exp(model.log_sigma_instability)
+    # sigma_cam_angle = torch.exp(model.log_sigma_cam_angle)
+    # # sigma_num_unstable = torch.exp(model.log_sigma_num_unstable)
 
-    # Total loss with uncertainty weighting
-    total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + torch.log(sigma_main) + \
-                 (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + torch.log(sigma_shapeset) + \
-                 (1 / (2 * sigma_type ** 2)) * loss_type + torch.log(sigma_type) + \
-                 (1 / (2 * sigma_total_height ** 2)) * loss_total_height + torch.log(sigma_total_height) + \
-                 (1 / (2 * sigma_instability ** 2)) * loss_instability + torch.log(sigma_instability) + \
-                 (1 / (2 * sigma_cam_angle ** 2)) * loss_cam_angle + torch.log(sigma_cam_angle)
-
+    # # Total loss with uncertainty weighting
+    # total_loss = (1 / (2 * sigma_main ** 2)) * loss_main + torch.log(sigma_main) + \
+    #              (1 / (2 * sigma_shapeset ** 2)) * loss_shapeset + torch.log(sigma_shapeset) + \
+    #              (1 / (2 * sigma_type ** 2)) * loss_type + torch.log(sigma_type) + \
+    #              (1 / (2 * sigma_total_height ** 2)) * loss_total_height + torch.log(sigma_total_height) + \
+    #              (1 / (2 * sigma_instability ** 2)) * loss_instability + torch.log(sigma_instability) + \
+    #              (1 / (2 * sigma_cam_angle ** 2)) * loss_cam_angle + torch.log(sigma_cam_angle)
 
     return total_loss
 
@@ -223,12 +227,26 @@ def loss(outputs, targets, model):
 
 
 def get_scheduler_with_warmup(optimizer, warmup_iters, cosine_T_max, last_epoch):
+    import math
+
     # Define LambdaLR for warmup phase
+    def cosine_warmup_lambda(epoch, warmup_iters):
+        if epoch < warmup_iters:
+            return 0.5 * (1 + math.cos(math.pi * epoch / warmup_iters))
+        return 1.0
+
     warmup_scheduler = lr_scheduler.LambdaLR(
         optimizer,
-        lr_lambda=lambda epoch: epoch / warmup_iters if epoch < warmup_iters else 1,
+        lr_lambda=lambda epoch: cosine_warmup_lambda(epoch, warmup_iters),
         last_epoch=last_epoch
     )
+
+    # linear scale warmup
+    # warmup_scheduler = lr_scheduler.LambdaLR(
+    #     optimizer,
+    #     lr_lambda=lambda epoch: epoch / warmup_iters if epoch < warmup_iters else 1,
+    #     last_epoch=last_epoch
+    # )
 
     # Define CosineAnnealingLR for after warmup
     cosine_scheduler = lr_scheduler.CosineAnnealingLR(
@@ -238,9 +256,6 @@ def get_scheduler_with_warmup(optimizer, warmup_iters, cosine_T_max, last_epoch)
     )
     
     return warmup_scheduler, cosine_scheduler
-
-
-
 
 # Main training loop
 def train_loop(args):
@@ -269,9 +284,34 @@ def train_loop(args):
     if args.resume_path:
         if os.path.isfile(args.resume_path):
             print(f"Loading model weights from {args.resume_path}")
+            
+            # for edge detection added
+            # # Load the checkpoint
+            # checkpoint = torch.load(args.resume_path, map_location=device)
+            
+            # # Handle the first layer convolution weight if the input channels are different
+            # pretrained_conv_weight = checkpoint['base_model.features.0.conv.weight']
+            
+            # # Check if the current model has 4 input channels and the checkpoint has only 3
+            # if pretrained_conv_weight.shape[1] == 3 and model.base_model.features[0].conv.in_channels == 4:
+            #     # Create a new weight tensor with 4 channels, initialize the new channel to zero
+            #     new_conv_weight = torch.zeros((pretrained_conv_weight.shape[0], 4, *pretrained_conv_weight.shape[2:]), 
+            #                                 dtype=pretrained_conv_weight.dtype)
+            #     # Copy the pretrained weights for the first 3 channels (RGB)
+            #     new_conv_weight[:, :3, :, :] = pretrained_conv_weight
+                
+            #     # Update the checkpoint with the new weights
+            #     checkpoint['base_model.features.0.conv.weight'] = new_conv_weight
+            
+            # # Load the modified state dict into the model
+            # model.load_state_dict(checkpoint, strict=False)
+
             model.load_state_dict(torch.load(args.resume_path, map_location=device, weights_only=True), strict=False)
+            
             print("Model weights loaded successfully.")
             start_epoch = 24
+
+
             # print(f"Loading checkpoint from {args.resume_path}")
             # checkpoint = torch.load(args.resume_path, map_location=device)
             
@@ -295,9 +335,9 @@ def train_loop(args):
     # criterion = loss
     criterion = loss_simple
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=5e-4, nesterov=True)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=1e-3, nesterov=True)
     # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
     print("start lr:", args.lr)
 
@@ -311,10 +351,11 @@ def train_loop(args):
     warmup_iters = int(0.1 * args.n_epochs)  # 10% of total epochs
     cosine_T_max = 24
 
-    # Manually set 'initial_lr' for each param group
-    for param_group in optimizer.param_groups:
-        if 'initial_lr' not in param_group:
-            param_group['initial_lr'] = 0.001
+    if args.resume_path:
+        # Manually set 'initial_lr' for each param group
+        for param_group in optimizer.param_groups:
+            if 'initial_lr' not in param_group:
+                param_group['initial_lr'] = 0.001
 
 
     # Get both schedulers
@@ -335,6 +376,7 @@ def train_loop(args):
                 # print("Finished warmup phase.")
         else:
             scheduler = cosine_scheduler
+            # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
             # print("No warmup phase, using cosine annealing scheduler.")
 
         train(epoch, model, loaders, args, criterion, optimizer, scheduler, device, writer)
