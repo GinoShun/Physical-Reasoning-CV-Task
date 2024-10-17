@@ -168,8 +168,8 @@ def train_loop(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 5-fold cross-validation
-    n_fold = 5
+    # k-fold cross-validation
+    n_fold = args.n_fold
     kf = KFold(n_splits=n_fold, shuffle=True, random_state=42)
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(dataset_instance), 1):

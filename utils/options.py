@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("--momentum", default=0.5, type=float)
     parser.add_argument("--warmup", default="False", type=str, help="warmup")
     parser.add_argument("--resume_path", default="", type=str, help="path to resume training")
+    parser.add_argument("--n_fold", default=10, type=int, help="number of folds for cross-validation")
 
     parser.add_argument("--optimizer", default="sgd", type=str, help="specify optimizer")
     parser.add_argument("--loss", default="ce", type=str, help="specify loss")
