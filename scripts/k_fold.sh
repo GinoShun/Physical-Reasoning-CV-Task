@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp28_10_fold_90_10_corrected"
+TASK_NAME="models/exp30_20_fold_95_5"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4
@@ -13,7 +13,7 @@ LEARNING_RATE=0.001
 MOMENTUM=0.9
 NETWORK="pretrained_inceptionv4"
 WARMUP="True"
-N_FOLD=10
+N_FOLD=20
 
 
 python train_k_fold.py \
