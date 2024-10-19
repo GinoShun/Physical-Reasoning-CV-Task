@@ -2,13 +2,13 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp7_resnet18_multiTask_baseline"
+TASK_NAME="models/exp6_1_resnet18_singleTask_baseline"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4
 BATCH_SIZE_TRAIN=64
 BATCH_SIZE_TEST=64
-N_EPOCHS=50
+N_EPOCHS=80
 LEARNING_RATE=0.001
 MOMENTUM=0.9
 NETWORK="resnet18_SE"

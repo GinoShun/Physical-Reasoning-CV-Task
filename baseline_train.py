@@ -139,7 +139,7 @@ def train_loop(args):
     # Initialize TensorBoard writer
     writer = SummaryWriter(log_dir=os.path.join(args.task_name, 'tensorboard_logs'))
 
-    singleTask = False
+    singleTask = True
 
     # Load data
     loaders = load_data(args, singleTask)

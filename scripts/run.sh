@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-TASK_NAME="models/exp31_unfreeze_inceptionv4"
+TASK_NAME="models/exp33_inceptionv4_multiTask_baseline"
 PICTURE_PATH="data/train"
 METADATA_PATH="data/train.csv"
 NUM_WORKERS=4

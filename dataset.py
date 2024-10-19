@@ -29,21 +29,29 @@ class AddEdgeDetection(A.ImageOnlyTransform):
 
 
 class StackDataset(Dataset):
-    def __init__(self, csv_file, image_dir, img_size, stable_height, train=True, testMode=False, remove6=False, doSplit=True):
+    def __init__(self, csv_file, image_dir, img_size, stable_height, train=True, testMode=False, remove6=False, doSplit=True, use_idx=False):
         self.image_dir = image_dir
         self.train = train
         self.testMode = testMode
         self.remove6 = remove6
         self.img_size = img_size
         self.doSplit = doSplit
+        self.use_idx = use_idx
         self.stable_height = stable_height
         self.metadata = pd.read_csv(csv_file)
         
         if not testMode:
             # Split data into training and validation sets
             if self.doSplit:
-                self.train_data, self.val_data = self.split_data()
-                self.data_frame = self.train_data if train else self.val_data
+                if use_idx:
+                    # read from npy
+                    val_idx = np.load('val_idx_fold_5.npy')
+                    val_idx = [int(idx) for idx in val_idx]
+                    print(f"Validation data from idx txt: {len(val_idx)} samples")
+                    self.data_frame = self.metadata[~self.metadata.index.isin(val_idx)]
+                else:
+                    self.train_data, self.val_data = self.split_data()
+                    self.data_frame = self.train_data if train else self.val_data
             else:
                 self.data_frame = self.metadata
 

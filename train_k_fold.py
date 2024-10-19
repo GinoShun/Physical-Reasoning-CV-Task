@@ -158,6 +158,7 @@ def get_scheduler_with_warmup(optimizer, warmup_iters, cosine_T_max, last_epoch)
 def train_loop(args):
     use_new_optimizer = True
     use_new_scheduler = True
+    import numpy as np
 
     # Load data
     dataset_instance = load_data(args)
@@ -174,6 +175,10 @@ def train_loop(args):
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(dataset_instance), 1):
         print(f"Training fold {fold}/{n_fold}")
+
+        # np.save(f'train_idx_fold_{fold}.npy', train_idx)
+        # np.save(f'val_idx_fold_{fold}.npy', val_idx)
+        # continue
 
         writer = SummaryWriter(log_dir=os.path.join(args.task_name, f'tensorboard_logs/fold_{fold}'))
 
