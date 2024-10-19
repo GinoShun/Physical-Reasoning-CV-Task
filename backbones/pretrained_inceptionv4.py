@@ -53,6 +53,9 @@ class CNN(nn.Module):
         # # edge detection added
         # self.base_model.features[0].conv = nn.Conv2d(4, 32, kernel_size=3, stride=2, bias=False)
         # nn.init.kaiming_normal_(self.base_model.features[0].conv.weight, mode='fan_out', nonlinearity='relu')
+
+        # for param in self.base_model.features[-3:].parameters():
+        #     param.requires_grad = True
         
         in_features = self.base_model.last_linear.in_features
         self.base_model.last_linear = nn.Identity()
