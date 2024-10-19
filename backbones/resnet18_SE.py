@@ -28,7 +28,7 @@ class BasicBlock(nn.Module):
 
 # ResNet-18 Model
 class CNN(nn.Module):
-    def __init__(self, n_classes=6, singleTask=False):
+    def __init__(self, n_classes=6, singleTask=True):
         super(CNN, self).__init__()
         self.singleTask = singleTask
 
