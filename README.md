@@ -69,6 +69,7 @@ This repository contains the code and resources for a computer vision assignment
 ## Training for recreate baselines
 
 1. **resnet18_SingleTask**:
+    
     1.1 Change `SingleTask` boolean in `resnet18_SE.py` to **True**  
     1.2 Change `SingleTask` boolean in `baseline_dataset.py` to **True**  
     1.3 Change `SingleTask` boolean in `baseline_train.py` to **True**  
@@ -78,6 +79,7 @@ This repository contains the code and resources for a computer vision assignment
     1.7 Waiting until midnight : )
 
 2. **resnet18_MultiTask**:
+    
     2.1 Change `SingleTask` boolean in `resnet18_SE.py` to **False**  
     2.2 Change `SingleTask` boolean in `baseline_dataset.py` to **False**  
     2.3 Change `SingleTask` boolean in `baseline_train.py` to **False**  
@@ -87,6 +89,7 @@ This repository contains the code and resources for a computer vision assignment
     2.7 Waiting until midnight : )
 
 3. **inceptionv4_SingleTask**:
+    
     3.1 Change `SingleTask` boolean in `pretrained_inceptionv4.py` to **True**  
     3.2 Change `SingleTask` boolean in `baseline_dataset.py` to **True**  
     3.3 Change `SingleTask` boolean in `baseline_train.py` to **True**  
@@ -96,6 +99,7 @@ This repository contains the code and resources for a computer vision assignment
     3.7 Waiting until midnight : )
 
 4. **inceptionv4_MultiTask**:
+    
     4.1 Use `dataset.py` and `train.py` now : )  
     4.2 Change `NETWORK` parameter to `"pretrained_inceptionv4"` in `run.sh`  
     4.3 Run in Linux/Unix shell: `chmod +x scripts/run.sh`  
